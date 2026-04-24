@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#ffffff">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Suscripciones">
+    <title>Gestor de Suscripciones</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { width: 100%; height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f9f9f9; color: #1a1a1a; }
+        body { display: flex; flex-direction: column; overflow: hidden; }
+        header { background: white; border-bottom: 0.5px solid #e0e0e0; padding: 12px 16px; }
+        .header-content { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+        h1 { font-size: 24px; font-weight: 600; }
+        .container { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 12px; }
+        .exchange-rate { background: white; border-radius: 12px; padding: 12px 16px; margin-bottom: 16px; border: 0.5px solid #e0e0e0; font-size: 13px; color: #666; }
+        .exchange-rate strong { color: #378add; font-weight: 600; }
+        .summary { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
+        .summary-card { background: white; border-radius: 12px; padding: 16px; border: 0.5px solid #e0e0e0; }
+        .summary-label { font-size: 12px; color: #999; text-transform: uppercase; font-weight: 500; margin-bottom: 6px; }
+        .summary-value { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
+        .summary-subtext { font-size: 11px; color: #ccc; }
+        .section-title { font-size: 13px; font-weight: 600; text-transform: uppercase; color: #999; padding: 0 4px; margin-top: 20px; margin-bottom: 12px; }
+        .items-list { display: flex; flex-direction: column; gap: 12px; }
+        .item-card { background: white; border-radius: 12px; padding: 16px; border: 0.5px solid #e0e0e0; }
+        .item-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+        .item-name { font-size: 15px; font-weight: 600; }
+        .item-type { font-size: 11px; background: #f0f0f0; color: #666; padding: 2px 8px; border-radius: 4px; }
+        .item-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 12px; margin-bottom: 10px; }
+        .meta-label { color: #999; font-size: 11px; }
+        .meta-value { color: #1a1a1a; font-weight: 500; }
+        .btn-primary { width: 40px; height: 40px; border-radius: 8px; border: none; background: #378add; color: white; font-size: 20px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+        .btn-primary:active { background: #2563eb; }
+        .btn-small { flex: 1; padding: 8px 12px; border: 0.5px solid #e0e0e0; background: #f9f9f9; border-radius: 6px; font-size: 12px; cursor: pointer; font-weight: 500; }
+        .btn-danger { border-color: #ffb3b3; background: #fff5f5; color: #d32f2f; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); z-index: 1000; align-items: flex-end; }
+        .modal.active { display: flex; }
+        .modal-content { background: white; width: 100%; border-radius: 20px 20px 0 0; padding: 24px 16px 40px; max-height: 90vh; overflow-y: auto; animation: slideUp 0.3s ease-out; }
+        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+        .modal-title { font-size: 18px; font-weight: 600; margin-bottom: 20px; }
+        .form-group { margin-bottom: 16px; }
+        .form-label { display: block; font-size: 13px; font-weight: 500; color: #666; margin-bottom: 6px; }
+        input, select { width: 100%; padding: 12px; border: 0.5px solid #e0e0e0; border-radius: 8px; font-size: 16px; }
+        input:focus, select:focus { outline: none; border-color: #378add; }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .btn-submit { width: 100%; padding: 14px; background: #378add; color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; margin-top: 20px; }
+        .btn-cancel { width: 100%; padding: 12px; background: #f9f9f9; color: #666; border: 0.5px solid #e0e0e0; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; margin-top: 8px; }
+        .empty-state { text-align: center; padding: 40px 20px; color: #999; }
+        .divider { height: 0.5px; background: #e0e0e0; margin: 12px 0; }
+        .credit-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; font-size: 12px; }
+        .credit-stat { background: #f9f9f9; padding: 10px; border-radius: 6px; }
+        .credit-stat-label { color: #999; font-size: 11px; }
+        .credit-stat-value { color: #1a1a1a; font-weight: 600; margin-top: 2px; }
+        .auth-container { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; padding: 20px; }
+        .auth-card { background: white; border-radius: 12px; padding: 32px 24px; width: 100%; max-width: 360px; border: 0.5px solid #e0e0e0; }
+        .auth-title { font-size: 20px; font-weight: 600; margin-bottom: 8px; text-align: center; }
+        .auth-subtitle { font-size: 14px; color: #666; margin-bottom: 24px; text-align: center; }
+        .auth-error { background: #fff5f5; color: #d32f2f; padding: 12px; border-radius: 6px; font-size: 13px; margin-bottom: 16px; display: none; }
+        .auth-error.show { display: block; }
+    </style>
+</head>
+<body>
+    <div id="appContainer" style="display: flex; flex: 1; flex-direction: column;">
+        <header>
+            <div class="header-content">
+                <h1>Suscripciones</h1>
+                <div style="display: flex; gap: 8px;">
+                    <button id="userBtn" style="width: 40px; height: 40px; border-radius: 8px; border: none; background: #f0f0f0; color: #666; font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center;">👤</button>
+                    <button class="btn-primary" onclick="openModal()">+</button>
+                </div>
+            </div>
+        </header>
+
+        <div class="container">
+            <div class="exchange-rate">
+                Tipo de cambio: <strong id="rateDisplay">$17.00</strong> MXN por USD
+            </div>
+
+            <div class="summary">
+                <div class="summary-card">
+                    <div class="summary-label">Gasto mensual</div>
+                    <div class="summary-value" id="monthlyValue">$0</div>
+                    <div class="summary-subtext" id="monthlyMXN">0 MXN</div>
+                </div>
+                <div class="summary-card">
+                    <div class="summary-label">Costo diario</div>
+                    <div class="summary-value" id="dailyValue">$0</div>
+                    <div class="summary-subtext" id="dailyMXN">0 MXN</div>
+                </div>
+            </div>
+
+            <div class="summary">
+                <div class="summary-card">
+                    <div class="summary-label">Total créditos</div>
+                    <div class="summary-value" id="creditsValue">$0</div>
+                    <div class="summary-subtext" id="creditsMXN">0 MXN</div>
+                </div>
+                <div class="summary-card">
+                    <div class="summary-label">Suscripciones</div>
+                    <div class="summary-value" id="subCount">0</div>
+                    <div class="summary-subtext">activas</div>
+                </div>
+            </div>
+
+            <div class="section-title">Suscripciones</div>
+            <div id="subscriptionsContainer" class="items-list"></div>
+
+            <div class="section-title">Créditos & IAs</div>
+            <div id="creditsContainer" class="items-list"></div>
+
+            <div id="emptyState" class="empty-state" style="margin-top: 40px;">
+                <div style="font-size: 48px; margin-bottom: 12px;">📱</div>
+                <p>Toca el + para agregar una suscripción</p>
+            </div>
+        </div>
+    </div>
+
+    <div id="authContainer" class="auth-container" style="display: none;">
+        <div class="auth-card">
+            <div class="auth-title">Suscripciones</div>
+            <div class="auth-subtitle">Sincroniza tus suscripciones en todos tus dispositivos</div>
+            <div class="auth-error" id="authError"></div>
+
+            <div id="loginForm">
+                <div class="form-group">
+                    <label class="form-label">Email</label>
+                    <input type="email" id="emailInput" placeholder="tu@email.com" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Contraseña</label>
+                    <input type="password" id="passwordInput" placeholder="••••••••" required>
+                </div>
+                <button class="btn-submit" onclick="handleLogin()">Inicia sesión</button>
+                <button class="btn-cancel" onclick="toggleForm()">¿No tienes cuenta? Registrate</button>
+            </div>
+
+            <div id="registerForm" style="display: none;">
+                <div class="form-group">
+                    <label class="form-label">Email</label>
+                    <input type="email" id="regEmailInput" placeholder="tu@email.com" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Contraseña</label>
+                    <input type="password" id="regPasswordInput" placeholder="••••••••" required>
+                </div>
+                <button class="btn-submit" onclick="handleRegister()">Registrate</button>
+                <button class="btn-cancel" onclick="toggleForm()">¿Ya tienes cuenta? Inicia sesión</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="typeModal">
+        <div class="modal-content">
+            <div class="modal-title">¿Qué quieres agregar?</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px;">
+                <button class="btn-small" style="border: 2px solid #e0e0e0; padding: 12px; background: white;" onclick="selectType('subscription')">Suscripción</button>
+                <button class="btn-small" style="border: 2px solid #e0e0e0; padding: 12px; background: white;" onclick="selectType('credit')">Créditos/IA</button>
+            </div>
+            <button class="btn-cancel" onclick="closeModal()">Cancelar</button>
+        </div>
+    </div>
+
+    <div class="modal" id="formModal">
+        <div class="modal-content">
+            <div class="modal-title" id="formTitle">Nueva suscripción</div>
+
+            <form id="subscriptionForm" style="display: none;" onsubmit="saveSub(event)">
+                <div class="form-group">
+                    <label class="form-label">Nombre</label>
+                    <input type="text" id="subName" placeholder="Amazon Prime" required>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Costo</label>
+                        <input type="number" id="subAmount" placeholder="100" step="0.01" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Moneda</label>
+                        <select id="subCurrency"><option>MXN</option><option>USD</option></select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Día de renovación</label>
+                    <input type="number" id="subDay" placeholder="15" min="1" max="31" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Tipo</label>
+                    <select id="subType"><option>Trabajo</option><option>Personal</option></select>
+                </div>
+                <button type="submit" class="btn-submit">Guardar</button>
+            </form>
+
+            <form id="creditForm" style="display: none;" onsubmit="saveCredit(event)">
+                <div class="form-group">
+                    <label class="form-label">Plataforma</label>
+                    <input type="text" id="creditName" placeholder="FLUX" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Créditos iniciales</label>
+                    <input type="number" id="creditInitial" placeholder="1000" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Costo (USD)</label>
+                    <input type="number" id="creditCost" placeholder="10" step="0.01" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Tipo</label>
+                    <select id="creditType"><option>Trabajo</option><option>Personal</option></select>
+                </div>
+                <button type="submit" class="btn-submit">Guardar</button>
+            </form>
+
+            <button class="btn-cancel" onclick="closeModal()">Cancelar</button>
+        </div>
+    </div>
+
+    <div class="modal" id="userModal">
+        <div class="modal-content">
+            <div class="modal-title">Cuenta</div>
+            <div style="background: #f9f9f9; padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+                <p style="font-size: 14px; font-weight: 500; margin-bottom: 4px;" id="userEmail">usuario@email.com</p>
+                <p style="font-size: 12px; color: #999;">Conectado</p>
+            </div>
+            <button class="btn-small" style="width: 100%; background: #fff5f5; border-color: #ffb3b3; color: #d32f2f; margin-bottom: 8px;" onclick="handleLogout()">Cerrar sesión</button>
+            <button class="btn-cancel" onclick="closeUserModal()">Cerrar</button>
+        </div>
+    </div>
+
+    <script>
+        const SUPABASE_URL = 'https://mkysafbhfxssbvglfczc.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_ITrmf4FrXo-Hv2x2yyHj6A_tLb4f1-M';
+
+        let supabase = null;
+        let currentUser = null;
+
+        const state = {
+            exchangeRate: 17,
+            subscriptions: [],
+            credits: []
+        };
+
+        async function initSupabase() {
+            const { createClient } = window.supabase;
+            supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+                currentUser = user;
+                showApp();
+                loadUserData();
+                fetchExchangeRate();
+                setInterval(fetchExchangeRate, 3600000);
+            } else {
+                showAuth();
+            }
+
+            supabase.auth.onAuthStateChange((event, session) => {
+                if (event === 'SIGNED_IN' && session) {
+                    currentUser = session.user;
+                    showApp();
+                    loadUserData();
+                } else if (event === 'SIGNED_OUT') {
+                    currentUser = null;
+                    showAuth();
+                }
+            });
+        }
+
+        function showApp() {
+            document.getElementById('authContainer').style.display = 'none';
+            document.getElementById('appContainer').style.display = 'flex';
+            document.getElementById('userBtn').addEventListener('click', () => {
+                document.getElementById('userEmail').textContent = currentUser.email;
+                document.getElementById('userModal').classList.add('active');
+            });
+        }
+
+        function showAuth() {
+            document.getElementById('appContainer').style.display = 'none';
+            document.getElementById('authContainer').style.display = 'flex';
+        }
+
+        function closeUserModal() {
+            document.getElementById('userModal').classList.remove('active');
+        }
+
+        async function handleLogin() {
+            const email = document.getElementById('emailInput').value.trim();
+            const password = document.getElementById('passwordInput').value;
+
+            if (!email || !password) {
+                showAuthError('Por favor rellena todos los campos');
+                return;
+            }
+
+            try {
+                const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+                if (error) {
+                    showAuthError('Email o contraseña incorrecta');
+                } else {
+                    currentUser = data.user;
+                    showApp();
+                    loadUserData();
+                }
+            } catch (e) {
+                showAuthError('Error al iniciar sesión');
+            }
+        }
+
+        async function handleRegister() {
+            const email = document.getElementById('regEmailInput').value.trim();
+            const password = document.getElementById('regPasswordInput').value;
+
+            if (!email || !password) {
+                showAuthError('Por favor rellena todos los campos');
+                return;
+            }
+
+            if (password.length < 6) {
+                showAuthError('La contraseña debe tener al menos 6 caracteres');
+                return;
+            }
+
+            try {
+                const { data, error } = await supabase.auth.signUp({ email, password });
+                if (error) {
+                    showAuthError(error.message);
+                } else {
+                    showAuthError('¡Registrado! Ahora inicia sesión');
+                    setTimeout(() => {
+                        toggleForm();
+                        document.getElementById('authError').classList.remove('show');
+                    }, 2000);
+                }
+            } catch (e) {
+                showAuthError('Error al registrarse');
+            }
+        }
+
+        function toggleForm() {
+            document.getElementById('loginForm').style.display = document.getElementById('loginForm').style.display === 'none' ? 'block' : 'none';
+            document.getElementById('registerForm').style.display = document.getElementById('registerForm').style.display === 'none' ? 'block' : 'none';
+        }
+
+        function showAuthError(message) {
+            const el = document.getElementById('authError');
+            el.textContent = message;
+            el.classList.add('show');
+            setTimeout(() => el.classList.remove('show'), 4000);
+        }
+
+        async function handleLogout() {
+            await supabase.auth.signOut();
+            currentUser = null;
+            showAuth();
+            document.getElementById('loginForm').style.display = 'block';
+            document.getElementById('registerForm').style.display = 'none';
+            document.getElementById('emailInput').value = '';
+            document.getElementById('passwordInput').value = '';
+            closeUserModal();
+        }
+
+        async function loadUserData() {
+            try {
+                const { data, error } = await supabase.from('user_data').select('*').eq('user_id', currentUser.id).single();
+                if (data) {
+                    state.subscriptions = data.subscriptions || [];
+                    state.credits = data.credits || [];
+                    state.exchangeRate = data.exchange_rate || 17;
+                }
+                render();
+            } catch (e) {
+                console.log('No user data yet');
+                render();
+            }
+        }
+
+        async function saveUserData() {
+            if (!currentUser) return;
+            try {
+                await supabase.from('user_data').upsert({
+                    user_id: currentUser.id,
+                    subscriptions: state.subscriptions,
+                    credits: state.credits,
+                    exchange_rate: state.exchangeRate,
+                    updated_at: new Date().toISOString()
+                }, { onConflict: 'user_id' });
+            } catch (e) {
+                console.log('Save error:', e);
+            }
+        }
+
+        async function fetchExchangeRate() {
+            try {
+                const response = await fetch('https://api.exchangerate-api.com/v4/latest/USD');
+                const data = await response.json();
+                const rate = data.rates.MXN;
+                if (!isNaN(rate) && rate > 0) {
+                    state.exchangeRate = rate;
+                    saveUserData();
+                    render();
+                }
+            } catch (e) {
+                console.log('Exchange rate fetch failed');
+            }
+        }
+
+        function getDaysUntilRenewal(day) {
+            const today = new Date();
+            let next = new Date(today.getFullYear(), today.getMonth(), day);
+            if (next <= today) next = new Date(today.getFullYear(), today.getMonth() + 1, day);
+            return Math.ceil((next - today) / (1000 * 60 * 60 * 24));
+        }
+
+        function formatCurrency(usd, mxn = false) {
+            if (mxn) return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', minimumFractionDigits: 0 }).format(usd);
+            return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }).format(usd);
+        }
+
+        function openModal() { document.getElementById('typeModal').classList.add('active'); }
+        function closeModal() {
+            document.getElementById('typeModal').classList.remove('active');
+            document.getElementById('formModal').classList.remove('active');
+        }
+
+        function selectType(type) {
+            document.getElementById('typeModal').classList.remove('active');
+            document.getElementById('formModal').classList.add('active');
+            if (type === 'subscription') {
+                document.getElementById('formTitle').textContent = 'Nueva suscripción';
+                document.getElementById('subscriptionForm').style.display = 'block';
+                document.getElementById('creditForm').style.display = 'none';
+            } else {
+                document.getElementById('formTitle').textContent = 'Nuevo crédito/IA';
+                document.getElementById('subscriptionForm').style.display = 'none';
+                document.getElementById('creditForm').style.display = 'block';
+            }
+        }
+
+        function saveSub(e) {
+            e.preventDefault();
+            state.subscriptions.push({
+                id: Date.now(),
+                name: document.getElementById('subName').value,
+                amount: parseFloat(document.getElementById('subAmount').value),
+                currency: document.getElementById('subCurrency').value,
+                renewalDay: parseInt(document.getElementById('subDay').value),
+                type: document.getElementById('subType').value
+            });
+            saveUserData();
+            closeModal();
+            document.getElementById('subscriptionForm').reset();
+        }
+
+        function saveCredit(e) {
+            e.preventDefault();
+            state.credits.push({
+                id: Date.now(),
+                name: document.getElementById('creditName').value,
+                type: document.getElementById('creditType').value,
+                used: 0,
+                purchases: [{
+                    amount: parseInt(document.getElementById('creditInitial').value),
+                    cost: parseFloat(document.getElementById('creditCost').value),
+                    date: new Date().toLocaleDateString('es-MX')
+                }]
+            });
+            saveUserData();
+            closeModal();
+            document.getElementById('creditForm').reset();
+        }
+
+        function deleteSub(id) { state.subscriptions = state.subscriptions.filter(s => s.id !== id); saveUserData(); }
+        function deleteCredit(id) { state.credits = state.credits.filter(c => c.id !== id); saveUserData(); }
+        function updateCreditsUsed(id, value) {
+            const credit = state.credits.find(c => c.id === id);
+            if (credit) { credit.used = parseInt(value) || 0; saveUserData(); }
+        }
+
+        function render() {
+            document.getElementById('rateDisplay').textContent = state.exchangeRate.toFixed(2);
+
+            let totalMonthlyUSD = 0;
+            state.subscriptions.forEach(sub => {
+                const usd = sub.currency === 'USD' ? sub.amount : sub.amount / state.exchangeRate;
+                totalMonthlyUSD += usd;
+            });
+
+            const totalMonthlyMXN = totalMonthlyUSD * state.exchangeRate;
+            const dailyUSD = totalMonthlyUSD / 30;
+            const dailyMXN = totalMonthlyMXN / 30;
+
+            document.getElementById('monthlyValue').textContent = formatCurrency(totalMonthlyUSD);
+            document.getElementById('monthlyMXN').textContent = formatCurrency(totalMonthlyMXN, true);
+            document.getElementById('dailyValue').textContent = formatCurrency(dailyUSD);
+            document.getElementById('dailyMXN').textContent = formatCurrency(dailyMXN, true);
+            document.getElementById('subCount').textContent = state.subscriptions.length;
+
+            let totalCreditsSpent = 0;
+            state.credits.forEach(c => c.purchases.forEach(p => totalCreditsSpent += p.cost));
+            const totalCreditsMXN = totalCreditsSpent * state.exchangeRate;
+            document.getElementById('creditsValue').textContent = formatCurrency(totalCreditsSpent);
+            document.getElementById('creditsMXN').textContent = formatCurrency(totalCreditsMXN, true);
+
+            const subContainer = document.getElementById('subscriptionsContainer');
+            subContainer.innerHTML = '';
+            state.subscriptions.forEach(sub => {
+                const daysLeft = getDaysUntilRenewal(sub.renewalDay);
+                const monthlyMXN = sub.currency === 'USD' ? sub.amount * state.exchangeRate : sub.amount;
+                const dailyCostMXN = monthlyMXN / 30;
+                const card = document.createElement('div');
+                card.className = 'item-card';
+                card.innerHTML = `
+                    <div class="item-header"><div class="item-name">${sub.name}</div><div class="item-type">${sub.type}</div></div>
+                    <div class="item-meta">
+                        <div><div class="meta-label">Costo</div><div class="meta-value">${sub.currency} ${sub.amount.toFixed(2)}/mes</div></div>
+                        <div><div class="meta-label">Renueva en</div><div class="meta-value">${daysLeft} días</div></div>
+                    </div>
+                    <div class="divider"></div>
+                    <div style="font-size: 12px; color: #999; margin-bottom: 12px;">~${Math.round(dailyCostMXN)} MXN/día</div>
+                    <button class="btn-small btn-danger" onclick="deleteSub(${sub.id})">Eliminar</button>
+                `;
+                subContainer.appendChild(card);
+            });
+
+            const creditContainer = document.getElementById('creditsContainer');
+            creditContainer.innerHTML = '';
+            state.credits.forEach(credit => {
+                const totalPurchased = credit.purchases.reduce((s, p) => s + p.amount, 0);
+                const remaining = totalPurchased - credit.used;
+                const totalSpent = credit.purchases.reduce((s, p) => s + p.cost, 0);
+                const costPerCredit = totalPurchased > 0 ? (totalSpent / totalPurchased).toFixed(4) : 0;
+                const card = document.createElement('div');
+                card.className = 'item-card';
+                card.innerHTML = `
+                    <div class="item-header"><div class="item-name">${credit.name}</div><div class="item-type">${credit.type}</div></div>
+                    <div class="item-meta">
+                        <div><div class="meta-label">Disponibles</div><div class="meta-value">${remaining}</div></div>
+                        <div><div class="meta-label">Gasto total</div><div class="meta-value">${formatCurrency(totalSpent)}</div></div>
+                    </div>
+                    <div class="divider"></div>
+                    <div class="credit-stats">
+                        <div class="credit-stat"><div class="credit-stat-label">Comprados</div><div class="credit-stat-value">${totalPurchased}</div></div>
+                        <div class="credit-stat"><div class="credit-stat-label">Usados</div><div class="credit-stat-value">${credit.used}</div></div>
+                    </div>
+                    <div style="margin-top: 12px;"><input type="number" value="${credit.used}" onchange="updateCreditsUsed(${credit.id}, this.value)" style="width: 100%; padding: 8px;"></div>
+                    <div class="credit-stats">
+                        <div class="credit-stat"><div class="credit-stat-label">$/crédito</div><div class="credit-stat-value">$${costPerCredit}</div></div>
+                        <div class="credit-stat"><div class="credit-stat-label">En MXN</div><div class="credit-stat-value">${formatCurrency(totalSpent * state.exchangeRate, true)}</div></div>
+                    </div>
+                    <button class="btn-small btn-danger" style="margin-top: 12px; width: 100%;" onclick="deleteCredit(${credit.id})">Eliminar</button>
+                `;
+                creditContainer.appendChild(card);
+            });
+
+            const empty = document.getElementById('emptyState');
+            empty.style.display = state.subscriptions.length === 0 && state.credits.length === 0 ? 'block' : 'none';
+        }
+
+        window.addEventListener('load', initSupabase);
+    </script>
+</body>
+</html>
